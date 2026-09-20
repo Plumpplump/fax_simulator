@@ -1,0 +1,11 @@
+1. I want to make a fax machine simulator with python flet.
+2. The UI has an image loader, which is a button and display.
+3. It has a button called scanner.
+4. Once you click the button, it will scan your image and the result will be placed side by side with the original image.
+5. It has a dropdown box which can decide your resolution (8x8, 16x16, 32x32, etc)
+6. Based on the chosen resoltuion, the picture is divided into grids
+7. In each cell, you calculate the greyscale of that cell, and this greyscale of the cell is the average of the greyscale of each pixel in that cell.
+8. The greyscale of each pixel is the average number of RGB colour values of that pixel.
+9. We need to have a clear button to clear everything.
+10. If I load a new image, the previous picture will be cleared automatically.
+11. Use flet mcp for syntax checking
