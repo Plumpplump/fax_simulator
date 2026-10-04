@@ -18,6 +18,28 @@ uv run flet run --web
 
 For more details on running the app, refer to the [Getting Started Guide](https://flet.dev/docs/).
 
+## Send and receive faxes over the network (LAN)
+
+Every running copy of the app is both a sender and a receiver. It listens on TCP
+port `9100` (change it in **Settings**) and can dial another copy on the same
+network.
+
+1. Start the app on two machines on the same Wi-Fi/LAN.
+2. Open **Settings** on the receiving machine and note the **local IP** shown
+   (it looks like `192.168.1.20`). Windows may ask to allow the app through the
+   firewall the first time it starts listening - allow it.
+3. On the sending machine: load or photograph an image, press **Scan**, then
+   pick the receiver from the **Nearby faxes** dropdown (each running copy is
+   found automatically over the LAN). If the list is empty you can still type
+   the receiver's address into **Send to** (e.g. `192.168.1.20:9100`), then
+   press **Send fax**.
+4. The receiving machine's **Received** pane fills in line by line as the page
+   arrives, then **Save** writes it to disk as a PNG.
+
+The networking core lives in `src/p2p/` and has **no** dependency on Flet, Pillow
+or the fax code, so it can be copied into any other Python project and imported
+with `import p2p` (see [src/p2p/README.md](src/p2p/README.md)).
+
 ## Build the app
 
 ### Android

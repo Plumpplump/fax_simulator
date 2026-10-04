@@ -1,7 +1,7 @@
 [project]
 name = "faxer"
 version = "0.1.0"
-description = "A fax machine simulator: load an image, scan it into a grid of averaged grey cells, and compare with the original."
+description = "A Flet fax machine transceiver: load or photograph a page, scan it into a grid of averaged grey cells, and send it line by line to another machine on the LAN - or receive and save incoming faxes."
 readme = "README.md"
 requires-python = ">=3.10"
 authors = [

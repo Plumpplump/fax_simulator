@@ -9,3 +9,10 @@
 9. We need to have a clear button to clear everything.
 10. If I load a new image, the previous picture will be cleared automatically.
 11. Use flet mcp for syntax checking
+12. Turn the simulator into a transceiver: send the scanned page over the network to another running instance.
+13. Use a peer-to-peer TCP connection over the LAN (host:port). The networking core must be an independent, reusable module (src/p2p) that can be imported by other projects.
+14. The receiver prints the incoming fax line by line, top to bottom, like a real machine.
+15. Burn a header line (station id + date/time) into the transmitted page, like a real fax header.
+16. Provide a Save button to write the received image to disk.
+17. A Settings dialog for station id, listen port, receive on/off and transmission speed.
+18. Auto-discover other running instances on the LAN (UDP broadcast) and let the user pick a peer from a "Nearby faxes" dropdown instead of typing an IP.

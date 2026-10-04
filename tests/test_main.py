@@ -19,11 +19,14 @@ async def test_app_mounts_controls(flet_app: ftt.FletTestApp):
     tester = flet_app.tester
     await tester.pump_and_settle()
 
-    assert (await tester.find_by_text("Fax Machine Simulator")).count == 1
+    assert (await tester.find_by_text("Fax Machine Transceiver")).count == 1
     assert (await tester.find_by_key("load_button")).count == 1
     assert (await tester.find_by_key("scan_button")).count == 1
     assert (await tester.find_by_key("clear_button")).count == 1
+    assert (await tester.find_by_key("send_button")).count == 1
+    assert (await tester.find_by_key("settings_button")).count == 1
     assert (await tester.find_by_key("resolution_dropdown")).count == 1
-    # both panes are mounted (side by side on the wide test host)
+    # all three panes are mounted (side by side on the wide test host)
     assert (await tester.find_by_key("original_image")).count == 1
     assert (await tester.find_by_key("scanned_image")).count == 1
+    assert (await tester.find_by_key("received_image")).count == 1

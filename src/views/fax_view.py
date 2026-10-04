@@ -22,8 +22,10 @@ PANEL_BG = ft.Colors.WHITE
 PANEL_BORDER = ft.Colors.GREY_300
 MUTED = ft.Colors.GREY_500
 
-# Below this width the two panes move into a tab bar.
-COMPACT_WIDTH = 700
+# Below this width the panes move into a tab bar. It is wider than the old
+# two-pane layout because three side-by-side panels need more room to stay
+# readable.
+COMPACT_WIDTH = 900
 
 CAMERA_UNSUPPORTED_HINT = (
     "Camera is only available on Android, iOS and Web builds - not desktop."
@@ -39,12 +41,14 @@ class FaxView:
             key="original_image",
             fit=ft.BoxFit.CONTAIN,
             expand=True,
+            visible=False,  # a src-less Image must be hidden or Flet rejects it
         )
         self.scanned_image = ft.Image(
             src=None,
             key="scanned_image",
             fit=ft.BoxFit.CONTAIN,
             expand=True,
+            visible=False,
         )
 
         self.original_hint = ft.Text(
@@ -106,6 +110,111 @@ class FaxView:
             ],
         )
 
+        # ---------------------------------------------------------- transceiver
+        # "Send to" is the peer's LAN address. It is plain text, parsed by the
+        # controller, so the view does not need to understand host:port.
+        self.recipient = ft.TextField(
+            key="recipient_field",
+            label="Send to",
+            hint_text="192.168.1.20:9100",
+            width=200,
+        )
+        self.send_button = ft.Button(
+            content="Send fax",
+            icon=ft.Icons.SEND,
+            key="send_button",
+            disabled=True,  # only enabled once there is a scan to send
+        )
+        self.settings_button = ft.IconButton(
+            icon=ft.Icons.SETTINGS,
+            key="settings_button",
+            tooltip="Network settings",
+        )
+        # A live list of other fax machines found on the LAN. Picking one fills
+        # the "Send to" field, so you rarely have to type an IP address.
+        self.peer_dropdown = ft.Dropdown(
+            key="peer_dropdown",
+            label="Nearby faxes",
+            width=280,
+            options=[],
+            hint_text="Searching the network...",
+        )
+
+        # ------------------------------------------------------- received inbox
+        # This pane fills in line by line while a fax is arriving, just like the
+        # paper coming out of a real machine.
+        self.received_image = ft.Image(
+            src=None,
+            key="received_image",
+            fit=ft.BoxFit.CONTAIN,
+            expand=True,
+            visible=False,  # shown only once a fax actually arrives
+        )
+        self.received_hint = ft.Text(
+            "No fax received yet",
+            color=MUTED,
+            text_align=ft.TextAlign.CENTER,
+        )
+        self.received_caption = ft.Text(
+            "",
+            size=12,
+            color=MUTED,
+            key="received_caption",
+            text_align=ft.TextAlign.CENTER,
+        )
+        self.received_progress = ft.ProgressBar(
+            value=0, key="received_progress", visible=False
+        )
+        self.save_button = ft.Button(
+            content="Save",
+            icon=ft.Icons.DOWNLOAD,
+            key="save_button",
+            disabled=True,
+        )
+
+        # --------------------------------------------------------- settings form
+        self.station_field = ft.TextField(
+            key="station_field", label="Station ID", width=200
+        )
+        self.port_field = ft.TextField(
+            key="port_field", label="Listen port", value="9100", width=130
+        )
+        self.speed_field = ft.TextField(
+            key="speed_field", label="Line delay (ms)", value="10", width=140
+        )
+        self.receive_switch = ft.Switch(
+            key="receive_switch", label="Receive faxes", value=True
+        )
+        self.local_ip_text = ft.Text("", key="local_ip_text", size=12, color=MUTED)
+        self.network_status = ft.Text(
+            "", key="network_status", size=12, color=MUTED
+        )
+        self.settings_apply_button = ft.Button(content="Apply")
+        self.settings_cancel_button = ft.Button(content="Cancel")
+        self.settings_dialog = ft.AlertDialog(
+            key="settings_dialog",
+            modal=True,
+            title=ft.Text("Network settings"),
+            content=ft.Column(
+                controls=[
+                    self.station_field,
+                    ft.Row(
+                        controls=[self.port_field, self.speed_field],
+                        spacing=10,
+                        wrap=True,
+                    ),
+                    self.receive_switch,
+                    ft.Text("This machine:", size=12, color=MUTED),
+                    self.local_ip_text,
+                    self.network_status,
+                ],
+                tight=True,
+                spacing=12,
+                width=340,
+            ),
+            actions=[self.settings_cancel_button, self.settings_apply_button],
+        )
+
         # Only mounted in compact (tabbed) layouts.
         self.tabs: ft.Tabs | None = None
 
@@ -153,6 +262,10 @@ class FaxView:
                 self.scan_button,
                 self.clear_button,
                 self.resolution,
+                self.peer_dropdown,
+                self.recipient,
+                self.send_button,
+                self.settings_button,
             ],
             wrap=True,
             spacing=10,
@@ -162,10 +275,11 @@ class FaxView:
 
         header = ft.Column(
             controls=[
-                ft.Text("Fax Machine Simulator", size=24, weight=ft.FontWeight.BOLD),
+                ft.Text("Fax Machine Transceiver", size=24, weight=ft.FontWeight.BOLD),
                 ft.Text(
-                    "Load a picture or take a photo, scan it into a coarse grid "
-                    "of grey cells, and compare with the original.",
+                    "Load a picture or take a photo, scan it into a coarse grid of "
+                    "grey cells, then send it to another machine on the network. "
+                    "Incoming faxes print line by line in the Received pane.",
                     size=13,
                     color=MUTED,
                 ),
@@ -204,7 +318,7 @@ class FaxView:
     def _build_tabs(self) -> ft.Control:
         self.tabs = ft.Tabs(
             key="tabs",
-            length=2,
+            length=3,
             selected_index=0,
             expand=True,
             content=ft.Column(
@@ -213,6 +327,7 @@ class FaxView:
                         tabs=[
                             ft.Tab(label="Original", icon=ft.Icons.IMAGE),
                             ft.Tab(label="Scanned", icon=ft.Icons.FAX),
+                            ft.Tab(label="Received", icon=ft.Icons.INBOX),
                         ]
                     ),
                     ft.TabBarView(
@@ -220,6 +335,7 @@ class FaxView:
                         controls=[
                             self._panel(self.original_image, self.original_hint),
                             self._panel(self.scanned_image, self.scanned_hint),
+                            self._received_panel(),
                         ],
                     ),
                 ],
@@ -237,6 +353,7 @@ class FaxView:
             controls=[
                 self._panel(self.original_image, self.original_hint),
                 self._panel(self.scanned_image, self.scanned_hint),
+                self._received_panel(),
             ],
         )
 
@@ -257,6 +374,30 @@ class FaxView:
             ),
         )
 
+    def _received_panel(self) -> ft.Container:
+        """The inbox pane: preview, caption, progress bar and Save button."""
+        return ft.Container(
+            expand=True,
+            bgcolor=PANEL_BG,
+            border=ft.Border.all(1, PANEL_BORDER),
+            border_radius=12,
+            padding=8,
+            alignment=ft.Alignment.CENTER,
+            content=ft.Column(
+                controls=[
+                    self.received_hint,
+                    self.received_image,
+                    self.received_progress,
+                    self.received_caption,
+                    self.save_button,
+                ],
+                expand=True,
+                alignment=ft.MainAxisAlignment.CENTER,
+                horizontal_alignment=ft.CrossAxisAlignment.CENTER,
+                spacing=8,
+            ),
+        )
+
     # ----------------------------------------------------------------- updates
     def set_source(self, data: bytes | None) -> None:
         self.original_image.src = data
@@ -271,9 +412,54 @@ class FaxView:
     def set_enabled(self, has_source: bool, has_result: bool) -> None:
         self.scan_button.disabled = not has_source
         self.clear_button.disabled = not (has_source or has_result)
+        # You can only "dial" once there is a scan to transmit.
+        self.send_button.disabled = not has_result
 
     def set_status(self, text: str) -> None:
         self.status.value = text
+
+    def set_received(self, data: bytes | None, caption: str) -> None:
+        """Show (or clear) the inbox preview with a one-line caption."""
+        self.received_image.src = data
+        self.received_image.visible = data is not None
+        self.received_hint.visible = data is None
+        self.received_caption.value = caption
+        self.received_caption.visible = bool(caption)
+
+    def set_received_progress(self, fraction: float) -> None:
+        """Update the receive progress bar; hide it once the page is complete."""
+        done = fraction >= 1.0
+        self.received_progress.value = 1.0 if done else fraction
+        self.received_progress.visible = not done
+
+    def set_save_enabled(self, enabled: bool) -> None:
+        self.save_button.disabled = not enabled
+
+    def set_network_status(self, text: str) -> None:
+        self.network_status.value = text
+
+    def set_peers(self, options: list[tuple[str, str]]) -> None:
+        """Replace the "Nearby faxes" dropdown with discovered peers.
+
+        ``options`` is a list of ``(value, label)`` pairs, where ``value`` is the
+        ``host:port`` address used when sending.
+        """
+        self.peer_dropdown.options = [
+            ft.DropdownOption(key=value, text=label) for value, label in options
+        ]
+        # If the selected peer has disappeared, clear the selection. The text in
+        # "Send to" is left alone so a manual send can still proceed.
+        if self.peer_dropdown.value not in {value for value, _ in options}:
+            self.peer_dropdown.value = None
+
+    def set_settings_values(
+        self, station: str, port: int, delay_ms: int, local_ip: str
+    ) -> None:
+        """Copy the controller's current settings into the dialog fields."""
+        self.station_field.value = station
+        self.port_field.value = str(port)
+        self.speed_field.value = str(delay_ms)
+        self.local_ip_text.value = f"This machine sends/receives on {local_ip}"
 
     def set_camera_open(self, opened: bool) -> None:
         """Reveal the live preview by hiding the panes stacked on top of it.

@@ -7,10 +7,12 @@ from PIL import Image
 
 from models.fax import (
     DEFAULT_RESOLUTION,
+    FAX_HEADER_HEIGHT,
     PAPER,
     RESOLUTIONS,
     WORK_SIZE,
     FaxState,
+    render_transmit_page,
     scan_image,
     standardize,
 )
@@ -88,3 +90,22 @@ def test_state_load_scan_and_autoclear():
 def test_scan_without_source_raises():
     with pytest.raises(ValueError):
         FaxState().scan()
+
+
+def test_render_transmit_page_adds_a_grey_header_band():
+    state = FaxState()
+    state.load(make_image(64, 64))
+    result = state.scan()
+
+    page = render_transmit_page(result, "555-0100", "2026-10-04 12:00")
+
+    assert page.mode == "L"  # one grey byte per pixel, ready to stream
+    assert page.size == (WORK_SIZE, WORK_SIZE + FAX_HEADER_HEIGHT)
+
+
+def test_state_starts_with_an_empty_inbox():
+    state = FaxState()
+    assert state.received is None
+    # Clearing the whiteboard must not throw away the inbox.
+    state.clear()
+    assert state.received is None

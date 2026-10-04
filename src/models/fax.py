@@ -15,10 +15,11 @@ Pipeline (``plan.txt``):
 from __future__ import annotations
 
 from dataclasses import dataclass, field
+from datetime import datetime
 from io import BytesIO
 
 import numpy as np
-from PIL import Image, ImageDraw, ImageOps
+from PIL import Image, ImageDraw, ImageFont, ImageOps
 
 # Side of the standardized square canvas used for both display and scanning.
 WORK_SIZE = 512
@@ -39,6 +40,10 @@ MIN_GRID_STEP = 8
 
 DEFAULT_RESOLUTION = 32
 
+# Height (in pixels) of the small "from / date" band printed above the grid,
+# mimicking the header line a real fax machine burns into every page.
+FAX_HEADER_HEIGHT = 30
+
 
 @dataclass
 class ScanResult:
@@ -54,6 +59,23 @@ class ScanResult:
 
 
 @dataclass
+class ReceivedFax:
+    """A fax that arrived from the network and is now sitting in the inbox.
+
+    The controller builds one of these when a transmission finishes, then the
+    view shows ``image_bytes`` and offers to Save it to disk.
+    """
+
+    station: str
+    resolution: int
+    width: int
+    height: int
+    image_bytes: bytes
+    received_at: datetime
+    sender: str = ""
+
+
+@dataclass
 class FaxState:
     """Mutable state the controller drives and the view mirrors."""
 
@@ -61,6 +83,9 @@ class FaxState:
     source_bytes: bytes | None = None
     resolution: int = DEFAULT_RESOLUTION
     result: ScanResult | None = None
+    # The last fax received from the network (the "inbox"). Unlike the scan,
+    # ``clear()`` deliberately leaves this alone - an inbox is not a whiteboard.
+    received: ReceivedFax | None = None
 
     @property
     def has_source(self) -> bool:
@@ -141,6 +166,56 @@ def _render_sheet(grid: Image.Image) -> Image.Image:
             draw.line([(pos, 0), (pos, WORK_SIZE)], fill=GRID_LINE, width=1)
             draw.line([(0, pos), (WORK_SIZE, pos)], fill=GRID_LINE, width=1)
     return sheet
+
+
+def render_transmit_page(
+    scan: ScanResult,
+    station: str,
+    sent_at: str | None = None,
+    page_width: int = WORK_SIZE,
+) -> Image.Image:
+    """Build the greyscale page that actually gets transmitted.
+
+    Real fax machines print a header line ("from" + date/time) above the image,
+    so we bake one in. The page is returned in mode ``"L"`` - one grey byte per
+    pixel - because the sender streams it row by row and that is the cheapest,
+    most fax-like representation.
+    """
+    sent_at = sent_at or datetime.now().strftime("%Y-%m-%d %H:%M")
+
+    # 1. The averaged grid, upscaled so every page has the same width.
+    grid = Image.fromarray(np.asarray(scan.cells, dtype=np.uint8), mode="L")
+    sheet = grid.resize((page_width, page_width), Image.Resampling.NEAREST)
+
+    # 2. Faint cell borders, matching the on-screen sheet.
+    step = page_width / grid.width
+    if grid.width > 1 and step >= MIN_GRID_STEP:
+        draw = ImageDraw.Draw(sheet)
+        for i in range(1, grid.width):
+            pos = round(i * step)
+            draw.line([(pos, 0), (pos, page_width)], fill=GRID_LINE[0], width=1)
+            draw.line([(0, pos), (page_width, pos)], fill=GRID_LINE[0], width=1)
+
+    # 3. The header band: text on paper white, with a thin rule underneath.
+    band = Image.new("L", (page_width, FAX_HEADER_HEIGHT), PAPER[0])
+    band_draw = ImageDraw.Draw(band)
+    band_draw.text(
+        (8, 8),
+        f"FROM {station}    {sent_at}",
+        fill=0,
+        font=ImageFont.load_default(size=14),
+    )
+    band_draw.line(
+        [(0, FAX_HEADER_HEIGHT - 1), (page_width, FAX_HEADER_HEIGHT - 1)],
+        fill=120,
+        width=1,
+    )
+
+    # 4. Stack the band on top of the grid.
+    page = Image.new("L", (page_width, page_width + FAX_HEADER_HEIGHT), PAPER[0])
+    page.paste(band, (0, 0))
+    page.paste(sheet, (0, FAX_HEADER_HEIGHT))
+    return page
 
 
 def to_png_bytes(image: Image.Image) -> bytes:
